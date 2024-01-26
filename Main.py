@@ -1,9 +1,10 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, font, PhotoImage
 import re
 import mysql.connector
 from mysql.connector import Error
 import hashlib
+from PIL import Image, ImageTk
 
 # Database configuration
 db_config = {
@@ -13,6 +14,17 @@ db_config = {
     'database': 'RSM',
     'raise_on_warnings': True
 }
+
+
+
+# Style settings
+bg_color = "lightblue"
+button_color = "lightblue"
+heading_font = ("Helvetica", 18, "bold")
+label_font = ("Helvetica", 12)
+entry_font = ("Helvetica", 12)
+
+
 
 # Function to create a database connection
 def create_db_connection():
@@ -28,12 +40,20 @@ def register_user(username, email, password, confirm_password):
     if password != confirm_password:
         messagebox.showwarning("Password Mismatch", "The passwords do not match.")
         return
+    if not is_valid_email(email):
+        messagebox.showwarning("Invalid Email", "Please enter a valid email address.")
+        return
     
-    # Check password criteria
-    if not re.match(r'(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}', password):
+# Check password criteria
+    # Regex explanation:
+    # ^(?=.*\d) - At least one digit
+    # (?=.*[A-Z]) - At least one uppercase letter
+    # (?=.*[!@#$%^&*()]) - At least one special character
+    # .{8,12}$ - Length between 8 to 12 characters
+    if not re.match(r"^(?=.*\d)(?=.*[A-Z])(?=.*[!@#$%^&*()]).{8,12}$", password):
         messagebox.showwarning(
             "Password Requirement",
-            "Password must be at least 8 characters long, include an uppercase letter, a lowercase letter, and a number."
+            "Password must be 8-12 characters long, include an uppercase letter, a number, and a special character."
         )
         return
   
@@ -56,6 +76,16 @@ def register_user(username, email, password, confirm_password):
         finally:
             cursor.close()
             conn.close()
+            
+
+def is_valid_email(email):
+    # Regular expression for validating an Email
+    regex = r'^[a-zA-Z0-9._%-]+@(gmail\.com|cmich\.edu|outlook\.com)$'
+    if re.match(regex, email):
+        return True
+    else:
+        return False
+
 
 # Function to verify user login
 def verify_login(username, password):
@@ -82,6 +112,36 @@ def verify_login(username, password):
         finally:
             conn.close()
     return False
+
+
+# Function to create the Add Recipe window
+def add_recipe_window():
+    add_window = tk.Toplevel()
+    add_window.geometry("1000x800")
+    add_window.title("Add New Recipe")
+    add_window.configure(bg=bg_color)
+    
+    
+    center_frame = tk.Frame(add_window, bg=bg_color)
+    center_frame.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+    
+    
+    
+
+    tk.Label(center_frame, text="Recipe Title",  font=label_font, bg=bg_color).pack()
+    title_entry = tk.Entry(center_frame)
+    title_entry.pack()
+
+    tk.Label(center_frame, text="Ingredients", font=label_font, bg=bg_color).pack()
+    ingredients_entry = tk.Entry(center_frame)
+    ingredients_entry.pack()
+
+    tk.Label(center_frame, text="Preparation Steps", font=label_font, bg=bg_color).pack()
+    steps_entry = tk.Entry(center_frame)
+    steps_entry.pack()
+
+    tk.Button(center_frame, text="Submit", command=lambda: submit_recipe(title_entry.get(), ingredients_entry.get(), steps_entry.get())).pack(pady=10)
+
 
 
 # Function to handle the login button click
@@ -156,6 +216,41 @@ def submit_recipe(title, ingredients_str, steps):
     else:
         messagebox.showerror("Error", "Cannot connect to the database.")
 
+
+
+
+
+
+
+def view_update_recipes_window():
+    view_window = tk.Toplevel()
+    view_window.title("View/Update Recipes")
+    view_window.configure(bg=bg_color)
+    view_window.geometry("1000x800")
+    
+    
+    center_frame = tk.Frame(view_window, bg=bg_color)
+    center_frame.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+    # Fetching recipes from the database
+    conn = create_db_connection()
+    if conn is not None:
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT RecipeID, Title FROM recipes WHERE UserID = %s", (logged_in_user_id,))
+            for recipe in cursor.fetchall():
+                recipe_id = recipe[0]
+                title = recipe[1]
+                tk.Label(center_frame, text="Recipe Name: "+title, font=label_font, bg=bg_color).pack()
+                tk.Button(center_frame, text="Edit",font=label_font, bg="lightgrey", command=lambda id=recipe_id: edit_recipe(id)).pack()
+                tk.Button(center_frame, text="Delete",font=label_font, bg="lightgrey", command=lambda id=recipe_id: delete_recipe(id)).pack()
+        except Error as e:
+            messagebox.showerror("Error", f"Error fetching recipes from MySQL database: {e}")
+        finally:
+            cursor.close()
+            conn.close()
+    else:
+        messagebox.showerror("Error", "Cannot connect to the database.")
+        
 def save_updated_recipe(recipe_id, title, ingredients, preparation):
     conn = create_db_connection()
     if conn is not None:
@@ -196,97 +291,18 @@ def save_updated_recipe(recipe_id, title, ingredients, preparation):
         messagebox.showerror("Error", "Cannot connect to the database.")
 
 
-def update_recipe_window(recipe_id):
-    # Fetching the current details of the recipe
-    conn = create_db_connection()
-    if conn is not None:
-        try:
-            cursor = conn.cursor()
-            cursor.execute("SELECT Title, Ingredients, Preparation FROM recipes WHERE RecipeID = %s", (recipe_id,))
-            
-            recipe = cursor.fetchone()
-            cursor.close()
-
-            # Creating a new window for updating the recipe
-            update_window = tk.Toplevel()
-            update_window.title("Update Recipe")
-
-            tk.Label(update_window, text="Title:").pack()
-            title_entry = tk.Entry(update_window)
-            title_entry.insert(0, recipe[0])  # Pre-fill with current title
-            title_entry.pack()
-
-            tk.Label(update_window, text="Ingredients:").pack()
-            ingredients_entry = tk.Entry(update_window)
-            ingredients_entry.insert(0, recipe[1])  # Pre-fill with current ingredients
-            ingredients_entry.pack()
-
-            tk.Label(update_window, text="Preparation:").pack()
-            preparation_entry = tk.Entry(update_window)
-            preparation_entry.insert(0, recipe[2])  # Pre-fill with current preparation steps
-            preparation_entry.pack()
-
-            # Save Changes Button
-            tk.Button(update_window, text="Save Changes", command=lambda: save_updated_recipe(recipe_id, title_entry.get(), ingredients_entry.get(), preparation_entry.get())).pack()
-
-            # Delete Button
-            tk.Button(update_window, text="Delete Recipe", command=lambda: delete_recipe(recipe_id)).pack()
-        except Error as e:
-            messagebox.showerror("Error", f"Error fetching recipe details: {e}")
-        finally:
-            conn.close()
-    else:
-        messagebox.showerror("Error", "Cannot connect to the database.")
-
-# Function to delete a recipe
-def delete_recipe(recipe_id):
-    conn = create_db_connection()
-    if conn is not None:
-        try:
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM recipes WHERE RecipeID = %s", (recipe_id,))
-            conn.commit()
-            messagebox.showinfo("Success", "Recipe deleted successfully.")
-        except Error as e:
-            messagebox.showerror("Error", f"Error deleting recipe: {e}")
-        finally:
-            cursor.close()
-            conn.close()
-    else:
-        messagebox.showerror("Error", "Cannot connect to the database.")
-     
-
-
-
-
-def view_update_recipes_window():
-    view_window = tk.Toplevel()
-    view_window.title("View/Update Recipes")
-
-    # Fetching recipes from the database
-    conn = create_db_connection()
-    if conn is not None:
-        try:
-            cursor = conn.cursor()
-            cursor.execute("SELECT RecipeID, Title FROM recipes WHERE UserID = %s", (logged_in_user_id,))
-            for recipe in cursor.fetchall():
-                recipe_id = recipe[0]
-                title = recipe[1]
-                tk.Label(view_window, text=title).pack()
-                tk.Button(view_window, text="Edit", command=lambda id=recipe_id: edit_recipe(id)).pack()
-                tk.Button(view_window, text="Delete", command=lambda id=recipe_id: delete_recipe(id)).pack()
-        except Error as e:
-            messagebox.showerror("Error", f"Error fetching recipes from MySQL database: {e}")
-        finally:
-            cursor.close()
-            conn.close()
-    else:
-        messagebox.showerror("Error", "Cannot connect to the database.")
 
 def edit_recipe(recipe_id):
     # Open a window to edit the recipe
     edit_window = tk.Toplevel()
     edit_window.title("Edit Recipe")
+    edit_window.configure(bg=bg_color)
+    edit_window.geometry("1000x800")
+    
+    
+    center_frame = tk.Frame(edit_window, bg=bg_color)
+    center_frame.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+    
 
     # Fetch and display the existing recipe details
     conn = create_db_connection()
@@ -300,23 +316,23 @@ def edit_recipe(recipe_id):
                 ingredients = recipe[1]
                 preparation = recipe[2]
 
-                tk.Label(edit_window, text="Title:").pack()
-                title_entry = tk.Entry(edit_window)
+                tk.Label(center_frame, text="Title:", font=label_font, bg=bg_color).pack()
+                title_entry = tk.Entry(center_frame)
                 title_entry.insert(0, title)
                 title_entry.pack()
 
-                tk.Label(edit_window, text="Ingredients:").pack()
-                ingredients_entry = tk.Entry(edit_window)
+                tk.Label(center_frame, text="Ingredients:", font=label_font, bg=bg_color).pack()
+                ingredients_entry = tk.Entry(center_frame)
                 ingredients_entry.insert(0, ingredients)
                 ingredients_entry.pack()
 
-                tk.Label(edit_window, text="Preparation:").pack()
-                preparation_entry = tk.Entry(edit_window)
+                tk.Label(center_frame, text="Preparation:", font=label_font, bg=bg_color).pack()
+                preparation_entry = tk.Entry(center_frame)
                 preparation_entry.insert(0, preparation)
                 preparation_entry.pack()
 
                 # Update button to save changes
-                tk.Button(edit_window, text="Update", command=lambda: save_updated_recipe(recipe_id, title_entry.get(), ingredients_entry.get(), preparation_entry.get())).pack()
+                tk.Button(center_frame, text="Update", command=lambda: save_updated_recipe(recipe_id, title_entry.get(), ingredients_entry.get(), preparation_entry.get())).pack()
 
             else:
                 messagebox.showerror("Error", "Recipe not found.")
@@ -334,11 +350,16 @@ def delete_recipe(recipe_id):
     if conn is not None:
         try:
             cursor = conn.cursor()
+            # First, delete any related entries in the 'recipeingredients' table
+            cursor.execute("DELETE FROM recipeingredients WHERE RecipeID = %s", (recipe_id,))
+            # Now, it's safe to delete the recipe from the 'recipes' table
             cursor.execute("DELETE FROM recipes WHERE RecipeID = %s", (recipe_id,))
             conn.commit()
             messagebox.showinfo("Success", "Recipe deleted successfully.")
         except Error as e:
-            messagebox.showerror("Error", f"Error deleting recipe from MySQL database: {e}")
+            # Rollback in case there is any error
+            conn.rollback()
+            messagebox.showerror("Error", f"Error deleting recipe: {e}")
         finally:
             cursor.close()
             conn.close()
@@ -346,21 +367,34 @@ def delete_recipe(recipe_id):
         messagebox.showerror("Error", "Cannot connect to the database.")
 
 
+
 def ingredient_input_window():
     ingredient_window = tk.Toplevel()
     ingredient_window.title("Input Ingredients")
+    ingredient_window.configure(bg=bg_color)
+    ingredient_window.geometry("1000x800")
+    
+    
+    center_frame = tk.Frame(ingredient_window, bg=bg_color)
+    center_frame.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
 
-    tk.Label(ingredient_window, text="Enter Ingredients (comma-separated):").pack()
-    ingredients_entry = tk.Entry(ingredient_window)
+    tk.Label(center_frame, text="Enter Ingredients (comma-separated):", bg= "lightblue").pack(fill='x', pady=10)
+    ingredients_entry = tk.Entry(center_frame)
     ingredients_entry.pack()
 
-    tk.Button(ingredient_window, text="Submit Ingredients", command=lambda: submit_user_ingredients(ingredients_entry.get(), ingredient_window)).pack()
+    tk.Button(center_frame, text="Submit Ingredients", command=lambda: submit_user_ingredients(ingredients_entry.get(), ingredient_window)).pack(fill='x', pady=10)
 
 
 
 def get_recipe_suggestions(ingredient_list):
     suggestion_window = tk.Toplevel()
     suggestion_window.title("Recipe Suggestions")
+    suggestion_window.configure(bg=bg_color)
+    suggestion_window.geometry("1000x800")
+    
+    
+    center_frame = tk.Frame(suggestion_window, bg=bg_color)
+    center_frame.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
 
     conn = create_db_connection()
     if conn is not None:
@@ -381,10 +415,10 @@ def get_recipe_suggestions(ingredient_list):
                 recipe_title = recipe['Title']
                 recipe_preparation = recipe['Preparation']
                 recipe_ingredients = recipe['Ingredients']
-                tk.Label(suggestion_window, text=f"Title: {recipe_title}").pack()
-                tk.Label(suggestion_window, text=f"Ingredients: {recipe_ingredients}").pack()
-                tk.Label(suggestion_window, text=f"Preparation: {recipe_preparation}").pack()
-                tk.Label(suggestion_window, text="----------------------------------").pack()
+                tk.Label(center_frame, text=f"Title: {recipe_title}").pack()
+                tk.Label(center_frame, text=f"Ingredients: {recipe_ingredients}").pack()
+                tk.Label(center_frame, text=f"Preparation: {recipe_preparation}").pack()
+                tk.Label(center_frame, text="----------------------------------").pack()
         except Error as e:
             messagebox.showerror("Error", f"Error fetching recipe suggestions: {e}")
         finally:
@@ -423,39 +457,30 @@ def get_ingredient_id(ingredient_name, cursor):
 
 
 
-# Function to create the Add Recipe window
-def add_recipe_window():
-    add_window = tk.Toplevel()
-    add_window.geometry("1000x800")
-    add_window.title("Add New Recipe")
-    
-
-    tk.Label(add_window, text="Recipe Title").pack()
-    title_entry = tk.Entry(add_window)
-    title_entry.pack()
-
-    tk.Label(add_window, text="Ingredients").pack()
-    ingredients_entry = tk.Entry(add_window)
-    ingredients_entry.pack()
-
-    tk.Label(add_window, text="Preparation Steps").pack()
-    steps_entry = tk.Entry(add_window)
-    steps_entry.pack()
-
-    tk.Button(add_window, text="Submit", command=lambda: submit_recipe(title_entry.get(), ingredients_entry.get(), steps_entry.get())).pack()
-
 
 # Function for creating the main application window
 def main_app_window():
     root.destroy()  # Close the login window
     main_window = tk.Tk()
-    main_window.geometry("1000x800")
-    main_window.title("Recipe Share Management System")
-
-    tk.Button(main_window, text="Add Recipe", command=add_recipe_window).pack(pady=50)
-    tk.Button(main_window, text="View/Update Recipe", command=view_update_recipes_window).pack(pady=50)
-    tk.Button(main_window, text="Get Suggestions", command=ingredient_input_window).pack(pady=50)
+    # Center frame
+  
     
+    
+    main_window.geometry("1000x800")
+    main_window.title("Culinary Canvas")
+    main_window.configure(bg=bg_color)
+    
+    center_frame = tk.Frame(main_window, bg=bg_color)
+    center_frame.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+    
+     # Heading label for the main application window
+ 
+
+    # Buttons packed within the center frame
+    tk.Button(center_frame, text="Add Recipe", command=add_recipe_window, bg='lightgrey').pack(fill='x', pady=10)
+    tk.Button(center_frame, text="View/Update Recipe", command=view_update_recipes_window, bg='lightgrey').pack(fill='x', pady=10)
+    tk.Button(center_frame, text="Get Suggestions", command=ingredient_input_window, bg='lightgrey').pack(fill='x', pady=10)
+  
     
 
     main_window.mainloop()
@@ -463,50 +488,92 @@ def main_app_window():
 
 # Function for creating the registration form
 def show_registration_form():
-    global new_username_entry, email_entry, new_password_entry, confirm_password_entry
+    global new_username_entry, email_entry, new_password_entry, confirm_password_entry, bg_color, label_font
     
+    # Create the top-level window
     register_window = tk.Toplevel()
+    register_window.geometry("1000x800")  # Adjust size as needed
+    register_window.configure(bg=bg_color)
+    
+    # Set window size
+    window_width = 1000
+    window_height = 800
+    register_window.geometry(f"{window_width}x{window_height}")
+
+
+    
+    
+    
     register_window.title("Register New User")
 
-    tk.Label(register_window, text="Username:").pack()
-    new_username_entry = tk.Entry(register_window)
+    
+    # Center frame
+    center_frame = tk.Frame(register_window, bg=bg_color)
+    center_frame.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+    
+    # Heading
+    heading_label = tk.Label(center_frame, text="User Registration", font=heading_font, bg=bg_color)
+    heading_label.pack(pady=20)
+
+    tk.Label(center_frame,text="Username:", font=label_font, bg=bg_color).pack()
+    new_username_entry = tk.Entry(center_frame)
     new_username_entry.pack()
 
-    tk.Label(register_window, text="Email:").pack()
-    email_entry = tk.Entry(register_window)
+    tk.Label(center_frame,text="Email:", font=label_font, bg=bg_color).pack()
+    email_entry = tk.Entry(center_frame)
     email_entry.pack()
 
-    tk.Label(register_window, text="Password:").pack()
-    new_password_entry = tk.Entry(register_window)
+    tk.Label(center_frame, text="Password:", font=label_font, bg=bg_color).pack()
+    new_password_entry = tk.Entry(center_frame)
     new_password_entry.pack()
 
-    tk.Label(register_window, text="Confirm Password:").pack()
-    confirm_password_entry = tk.Entry(register_window, show="*")
+    tk.Label(center_frame, text="Confirm Password:", font=label_font, bg=bg_color).pack()
+    confirm_password_entry = tk.Entry(center_frame, show="*")
     confirm_password_entry.pack()
 
-    register_button = tk.Button(register_window, text="Register", command=register_button_clicked)
-    register_button.pack()
+    register_button = tk.Button(center_frame, text="Register", command=register_button_clicked)
+    register_button.pack(pady=20)
+   
 
 # Tkinter GUI for Login
 root = tk.Tk()
 root.geometry("1000x800")
-root.title("Login")
+root.title("Culinary Canvas")
+root.configure(bg=bg_color)
 
-tk.Label(root, text="Username:").pack()
+
+ # Heading
+heading_label = tk.Label( text="Culinary Canvas", font=heading_font, bg=bg_color)
+heading_label.pack(pady=20)
+
+desired_width = 300
+desired_height = 250
+
+# Load the image
+image = Image.open("Main_pic.jpeg")
+# Resize the image to desired dimensions
+image = image.resize((desired_width, desired_height))
+    
+logo_image = ImageTk.PhotoImage(image)
+logo_label = tk.Label(root, image=logo_image, bg=bg_color)  # Assume the background of your image is white
+logo_label.pack(pady=20)
+    
+
+tk.Label(root, text="Username:", font=label_font, bg=bg_color).pack()
 username_entry = tk.Entry(root)
 username_entry.pack()
 
-tk.Label(root, text="Password:").pack()
+tk.Label(root, text="Password:", font=label_font, bg=bg_color).pack()
 password_entry = tk.Entry(root, show="*")
 password_entry.pack()
 
 login_button = tk.Button(root, text="Login", command=login_button_clicked)
-login_button.pack()
+login_button.pack(pady=10)
 
-register_label = tk.Label(root, text="New user?")
-register_label.pack()
+register_label = tk.Label(root, text="New user?",bg=bg_color, font=label_font)
+register_label.pack(pady=10)
 
 register_button = tk.Button(root, text="Register", command=show_registration_form)
-register_button.pack()
+register_button.pack(pady=10)
 
 root.mainloop()
