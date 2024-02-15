@@ -243,6 +243,7 @@ def view_update_recipes_window():
                 tk.Label(center_frame, text="Recipe Name: "+title, font=label_font, bg=bg_color).pack()
                 tk.Button(center_frame, text="Edit",font=label_font, bg="lightgrey", command=lambda id=recipe_id: edit_recipe(id)).pack()
                 tk.Button(center_frame, text="Delete",font=label_font, bg="lightgrey", command=lambda id=recipe_id: delete_recipe(id)).pack()
+                
         except Error as e:
             messagebox.showerror("Error", f"Error fetching recipes from MySQL database: {e}")
         finally:
@@ -383,16 +384,90 @@ def ingredient_input_window():
     ingredients_entry.pack()
 
     tk.Button(center_frame, text="Submit Ingredients", command=lambda: submit_user_ingredients(ingredients_entry.get(), ingredient_window)).pack(fill='x', pady=10)
+    
+    
+    
+def increment_recipe_view_count(recipe_id):
+    conn = create_db_connection()
+    if conn is not None:
+        try:
+            cursor = conn.cursor()
+            # Increment the view count for the recipe
+            cursor.execute("UPDATE recipes SET ViewCount = ViewCount + 1 WHERE RecipeID = %s", (recipe_id,))
+            conn.commit()
+        except Error as e:
+            conn.rollback()  # Rollback in case of error
+            print(f"Error incrementing view count: {e}")
+        finally:
+            cursor.close()
+            conn.close()
 
 
+def display_full_recipe(recipe_id):
+    
+    detail_window = tk.Toplevel()
+    detail_window.title("Recipe Details")
+    detail_window.configure(bg=bg_color)
+    detail_window.geometry("1000x800")
+    increment_recipe_view_count(recipe_id)
+    detail_center_frame = tk.Frame(detail_window, bg=bg_color)
+    detail_center_frame.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+
+    conn = create_db_connection()
+    if conn is not None:
+        try:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute("SELECT Title, Ingredients, Preparation FROM recipes WHERE RecipeID = %s", (recipe_id,))
+            recipe = cursor.fetchone()
+            cursor.close()
+
+            if recipe:
+                tk.Label(detail_center_frame, text=f"Title: {recipe['Title']}", font=label_font, bg=bg_color).pack()
+                tk.Label(detail_center_frame, text=f"Ingredients: {recipe['Ingredients']}", font=label_font, bg=bg_color).pack()
+                tk.Label(detail_center_frame, text=f"Preparation: {recipe['Preparation']}", font=label_font, bg=bg_color).pack()
+            else:
+                messagebox.showinfo("Not found", "Recipe details not found.")
+        except Error as e:
+            messagebox.showerror("Error", f"Error fetching recipe details: {e}")
+        finally:
+            conn.close()
+    else:
+        messagebox.showerror("Error", "Cannot connect to the database.")
+
+
+def display_most_popular_recipes():
+    popular_window = tk.Toplevel()
+    popular_window.title("Most Popular Recipes")
+    popular_window.configure(bg=bg_color)
+    popular_window.geometry("1000x800")
+
+    center_frame = tk.Frame(popular_window, bg=bg_color)
+    center_frame.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+
+    conn = create_db_connection()
+    if conn is not None:
+        try:
+            cursor = conn.cursor(dictionary=True)
+            # Select recipes with the highest view counts
+            cursor.execute("SELECT Title, ViewCount FROM recipes ORDER BY ViewCount DESC LIMIT 10")
+            for recipe in cursor.fetchall():
+                tk.Label(center_frame, text=f"{recipe['Title']} - Views: {recipe['ViewCount']}", bg=bg_color).pack()
+        except Error as e:
+            messagebox.showerror("Error", f"Error fetching most popular recipes: {e}")
+        finally:
+            cursor.close()
+            conn.close()
+    else:
+        messagebox.showerror("Error", "Cannot connect to the database.")
+    # ... In your main_app_window or wherever you want the button ...
+    
 
 def get_recipe_suggestions(ingredient_list):
     suggestion_window = tk.Toplevel()
     suggestion_window.title("Recipe Suggestions")
     suggestion_window.configure(bg=bg_color)
     suggestion_window.geometry("1000x800")
-    
-    
+
     center_frame = tk.Frame(suggestion_window, bg=bg_color)
     center_frame.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
 
@@ -402,23 +477,20 @@ def get_recipe_suggestions(ingredient_list):
             cursor = conn.cursor(dictionary=True)
             format_strings = ','.join(['%s'] * len(ingredient_list))
             query = f"""
-            SELECT DISTINCT r.RecipeID, r.Title, r.Preparation, r.Ingredients
+            SELECT DISTINCT r.RecipeID, r.Title
             FROM Recipes r
             JOIN RecipeIngredients ri ON r.RecipeID = ri.RecipeID
             JOIN Ingredients i ON ri.IngredientID = i.IngredientID
             WHERE ri.IngredientID IN (SELECT IngredientID FROM Ingredients WHERE Name IN ({format_strings}))
-            GROUP BY r.RecipeID, r.Title, r.Preparation, r.Ingredients
+            GROUP BY r.RecipeID, r.Title
             """
             cursor.execute(query, tuple(ingredient_list))
 
             for recipe in cursor.fetchall():
-                recipe_title = recipe['Title']
-                recipe_preparation = recipe['Preparation']
-                recipe_ingredients = recipe['Ingredients']
-                tk.Label(center_frame, text=f"Title: {recipe_title}").pack()
-                tk.Label(center_frame, text=f"Ingredients: {recipe_ingredients}").pack()
-                tk.Label(center_frame, text=f"Preparation: {recipe_preparation}").pack()
-                tk.Label(center_frame, text="----------------------------------").pack()
+                recipe_id = recipe['RecipeID']
+                # recipe_title = recipe['Title']
+                recipe_button = tk.Button(center_frame, text=f"Title: {recipe['Title']}", command=lambda r_id=recipe_id: display_full_recipe(r_id))
+                recipe_button.pack(fill='x', pady=10)
         except Error as e:
             messagebox.showerror("Error", f"Error fetching recipe suggestions: {e}")
         finally:
@@ -480,6 +552,8 @@ def main_app_window():
     tk.Button(center_frame, text="Add Recipe", command=add_recipe_window, bg='lightgrey').pack(fill='x', pady=10)
     tk.Button(center_frame, text="View/Update Recipe", command=view_update_recipes_window, bg='lightgrey').pack(fill='x', pady=10)
     tk.Button(center_frame, text="Get Suggestions", command=ingredient_input_window, bg='lightgrey').pack(fill='x', pady=10)
+    tk.Button(center_frame, text="Most Popular Recipes", command=display_most_popular_recipes).pack(pady=20)
+
   
     
 
